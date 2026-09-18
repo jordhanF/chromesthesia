@@ -1,4 +1,4 @@
-# Sala
+# Chromesthesia
 
 Visualizador de música para quarto de som, construído sobre a
 [libprojectM](https://github.com/projectM-visualizer/projectm) 4.1.4 — a reimplementação
