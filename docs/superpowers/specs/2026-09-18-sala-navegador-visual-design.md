@@ -63,13 +63,17 @@ O servidor nunca executa chamadas GL. Violar isso produz crash silencioso.
 |---|---|---|
 | `engine/pm_ffi.py` | Binding ctypes para `projectM-4.dll`. Sem lógica. | ctypes |
 | `engine/audio.py` | Captura loopback → ring buffer | PyAudioWPatch |
-| `engine/renderer.py` | Janela glfw, contexto, `glewInit()`, loop de render | glfw, PyOpenGL |
+| `engine/gl_context.py` | Janela glfw, contexto 3.3 core, `glewInit()` | glfw |
+| `engine/capture.py` | `glReadPixels` → numpy, já desvirado | PyOpenGL, numpy |
+| `engine/render_loop.py` | Loop de render a 60 fps (Fase 1b) | gl_context, pm_ffi |
 | `engine/commands.py` | Fila thread-safe e snapshot de estado | stdlib |
 | `engine/main.py` | Monta as três threads | todos acima |
 | `indexer/milk_parser.py` | `.milk` → dict de features. **Função pura**, sem GL, sem rede. | stdlib |
 | `indexer/reference.py` | Fonte do sinal de referência (sintético ou arquivo) | numpy |
 | `indexer/build_index.py` | Varre presets → SQLite | milk_parser |
-| `indexer/render_previews.py` | projectM headless → glReadPixels → WebP | renderer, reference, Pillow |
+| `indexer/render_posters.py` | Posters estáticos do corpus inteiro (Fase 1a) | gl_context, capture, reference, Pillow |
+| `indexer/render_animated.py` | Previews animados sob demanda (Fase 1b) | idem |
+| `indexer/capture_reference.py` | Grava referência do loopback WASAPI | PyAudioWPatch |
 | `server/api.py` | REST: listagem filtrada, previews | FastAPI |
 | `server/ws.py` | WebSocket: comandos ↔ estado | websockets |
 | `ui/` | React + TS (Vite), responsivo 390px→1920px | — |
