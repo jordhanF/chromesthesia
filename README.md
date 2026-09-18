@@ -73,6 +73,43 @@ alguém:
   traz `projectM-4.dll`, `glew32.dll`, presets e texturas. Aponte `CHROMESTHESIA_APP_DIR` para a
   pasta extraída.
 
+## Como rodar
+
+Construir o índice e os posters (uma vez, leva horas para o corpus inteiro):
+
+```bash
+python -m indexer.build_index
+python -m indexer.render_posters
+python -m indexer.render_posters --redo-below-contrast 20 --warmup 1200
+```
+
+Subir o motor ao vivo:
+
+```bash
+python -m engine.app
+```
+
+A janela abre, reage ao áudio que estiver tocando, e o terminal imprime o endereço da
+máquina na rede. Do celular, `http://<ip>:8765/docs`.
+
+**Duas armadilhas operacionais, ambas medidas:**
+
+- **Rode num terminal de verdade.** Lançado em segundo plano ou destacado do console, o
+  processo recebe evento de fechamento e morre logo após subir o servidor — sem
+  traceback, o que engana. É um aplicativo de janela; ele quer um console.
+- **Não minimize a janela.** O driver estrangula renderização de janela oculta: medido
+  **120 fps visível contra 16–26 fps minimizada**, no mesmo preset. Se o visual
+  engasgar, a primeira coisa a conferir é se a janela está em primeiro plano — não o
+  código.
+
+Se o celular não alcançar, libere a porta num PowerShell como administrador:
+
+```
+netsh advfirewall firewall add rule name="Chromesthesia" dir=in action=allow protocol=TCP localport=8765
+```
+
+VPN ligada também quebra o alcance da rede local.
+
 ## Licença
 
 A libprojectM é LGPL-2.1. Este repositório contém apenas código próprio e não redistribui
