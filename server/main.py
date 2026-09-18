@@ -38,6 +38,14 @@ def build_app(commands: CommandQueue, state: StatePublisher) -> FastAPI:
     app = FastAPI(title="Chromesthesia")
     app.include_router(build_router(config.DB_PATH, config.PREVIEW_DIR, commands, state))
     app.include_router(build_ws_router(commands, state))
+
+    # Montado por ultimo de proposito: montar a raiz antes dos include_router
+    # capturaria /api e /ws, e a interface serviria HTML no lugar da API.
+    ui_dist = config.PROJECT_ROOT / "ui" / "dist"
+    if ui_dist.is_dir():
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/", StaticFiles(directory=str(ui_dist), html=True), name="ui")
+
     return app
 
 
