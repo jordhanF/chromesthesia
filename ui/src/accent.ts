@@ -5,28 +5,38 @@
  * Preto e branco sao descartados de proposito: posters psicodelicos tem muito
  * dos dois, e nenhum dos dois diz nada sobre a identidade do preset. O que
  * identifica e o matiz saturado.
+ *
+ * Escolher a cor e torna-la legivel sao responsabilidades separadas de
+ * proposito, em duas funcoes. Testar as duas coisas numa funcao so faz o
+ * teste de escolha assertar valores RGB exatos para cores cuja luma cai
+ * numa faixa qualquer - e forca o limiar de clareamento pra baixo ate esse
+ * teste parar de reclamar. O limiar que passa no teste vira ilegivel na
+ * tela: medido contra o corpus real, um limiar de 0.22 (que passava nos
+ * testes antigos) deixava 4 em 14 posters com acento entre luma 0.22 e 0.24 -
+ * tecnicamente "clareado", na pratica quase preto sobre fundo quase preto.
  */
 
 export const FALLBACK_ACCENT = "rgb(184, 164, 255)";
 
 const MIN_SATURATION = 0.25;
 /**
- * Abaixo disto o pixel e tratado como preto de fundo e descartado.
+ * Abaixo disto o pixel e tratado como preto de fundo e descartado da escolha.
  *
  * Precisa ficar abaixo da luma de um vermelho escuro mas saturado (ex.:
- * rgb(40, 4, 4) tem luma ~0.046) - esse pixel deve ser clareado, nao
- * descartado como se fosse so ruido preto.
+ * rgb(40, 4, 4) tem luma ~0.046) - esse pixel carrega matiz de verdade e
+ * precisa entrar na media. Se ele ficar ilegivel depois de escolhido e
+ * problema de `liftForDarkGround`, nao motivo pra descartar na escolha.
  */
 const MIN_LUMA = 0.03;
 const MAX_LUMA = 0.94;
+
 /**
- * Abaixo disto a cor nao brilha o bastante contra o fundo preto e e clareada.
- *
- * Precisa ficar abaixo da luma de cores ja saturadas e razoavelmente visiveis
- * (ex.: rgb(220, 20, 60) tem luma ~0.257, rgb(90, 60, 200) tem luma ~0.300) -
- * senao o clareamento acaba estourando uma cor que ja estava boa.
+ * Luma minima pra um acento servir na interface: e usado como texto grande
+ * sobre o fundo #08070a (luma ~0.03) e como fundo de chip com texto escuro
+ * por cima, e nenhum dos dois funciona abaixo de ~0.45. Medido contra o
+ * corpus real: um limiar de 0.22 deixava 4 em 14 posters ilegiveis.
  */
-const TARGET_MIN_LUMA = 0.22;
+const TARGET_MIN_LUMA = 0.45;
 
 function luma(r: number, g: number, b: number): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
@@ -39,7 +49,9 @@ function saturation(r: number, g: number, b: number): number {
 }
 
 /**
- * Media dos pixels saturados de um bloco RGBA, clareada se necessario.
+ * Media dos pixels saturados de um bloco RGBA. So escolhe a cor - nao
+ * clareia. Legibilidade e responsabilidade de `liftForDarkGround`, chamada
+ * depois pelo lado de quem consome a cor escolhida.
  *
  * Recebe o formato cru de CanvasRenderingContext2D.getImageData().data.
  */
@@ -64,23 +76,57 @@ export function dominantAccent(data: Uint8ClampedArray): string {
 
   if (contados === 0) return FALLBACK_ACCENT;
 
-  let r = Math.round(somaR / contados);
-  let g = Math.round(somaG / contados);
-  let b = Math.round(somaB / contados);
-
-  const atual = luma(r, g, b);
-  if (atual < TARGET_MIN_LUMA && atual > 0) {
-    const ganho = TARGET_MIN_LUMA / atual;
-    r = Math.min(255, Math.round(r * ganho));
-    g = Math.min(255, Math.round(g * ganho));
-    b = Math.min(255, Math.round(b * ganho));
-  }
+  const r = Math.round(somaR / contados);
+  const g = Math.round(somaG / contados);
+  const b = Math.round(somaB / contados);
 
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+function aplicarGanho(r: number, g: number, b: number, ganho: number): [number, number, number] {
+  return [Math.min(255, r * ganho), Math.min(255, g * ganho), Math.min(255, b * ganho)];
+}
+
 /**
- * Le o poster de uma URL e devolve seu acento.
+ * Escala uma cor "rgb(r, g, b)" proporcionalmente ate atingir TARGET_MIN_LUMA,
+ * preservando a proporcao entre canais - um vermelho escuro continua
+ * vermelho, nao vira cinza. Cor ja clara o bastante passa intacta.
+ *
+ * Nao usa um "ganho = alvo / luma atual" multiplicado direto num passo so:
+ * quando um canal ja esta perto do teto de 255, esse ganho unico trava o
+ * canal no teto sem levantar a luma quase nada. Isso aconteceu de verdade
+ * num poster do corpus - rgb(254, 1, 255), magenta quase puro com luma 0.29:
+ * R e B ja quase no teto, G quase zero. O ganho de um passo so (0.45 / 0.29
+ * =~ 1.55) so leva G de 1 pra 2 e trava R e B em 255 - luma final continua
+ * ~0.29, ilegivel do mesmo jeito. A busca binaria acha o ganho certo mesmo
+ * quando alguns canais travam antes de outros: quem trava para de crescer,
+ * o resto continua subindo ate a luma alcancar o alvo.
+ */
+export function liftForDarkGround(cor: string): string {
+  const canais = cor.match(/\d+/g);
+  if (!canais) return cor;
+  const [r, g, b] = canais.map(Number);
+
+  if (r === 0 && g === 0 && b === 0) return cor; // preto puro: nada pra escalar
+
+  if (luma(r, g, b) >= TARGET_MIN_LUMA) return cor;
+
+  let lo = 1;
+  let hi = 255; // ganho que garante qualquer canal com valor minimo util (1) no teto
+  for (let i = 0; i < 24; i++) {
+    const meio = (lo + hi) / 2;
+    const [cr, cg, cb] = aplicarGanho(r, g, b, meio);
+    if (luma(cr, cg, cb) < TARGET_MIN_LUMA) lo = meio;
+    else hi = meio;
+  }
+
+  const [fr, fg, fb] = aplicarGanho(r, g, b, hi);
+  return `rgb(${Math.round(fr)}, ${Math.round(fg)}, ${Math.round(fb)})`;
+}
+
+/**
+ * Le o poster de uma URL e devolve seu acento: escolhe a cor dominante e
+ * depois levanta se ela estiver escura demais pro fundo.
  *
  * Amostra numa area pequena de proposito: 32x18 e resolucao mais que
  * suficiente para media de cor, e evita alocar o bitmap inteiro.
@@ -100,5 +146,6 @@ export async function accentFromImage(url: string): Promise<string> {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return FALLBACK_ACCENT;
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return dominantAccent(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  return liftForDarkGround(dominantAccent(data));
 }
