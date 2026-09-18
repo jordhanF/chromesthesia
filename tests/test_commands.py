@@ -1,5 +1,8 @@
 # tests/test_commands.py
-from engine.commands import CommandQueue, LoadPreset, SetBeatSensitivity, Shutdown
+import threading
+
+from engine.commands import (CommandQueue, EngineState, LoadPreset,
+                             SetBeatSensitivity, Shutdown, StatePublisher)
 
 
 def test_comandos_saem_na_ordem_em_que_entraram():
@@ -30,3 +33,50 @@ def test_send_nao_bloqueia_quando_cheia():
 
 def test_load_preset_tem_transicao_suave_por_padrao():
     assert LoadPreset("a.milk").smooth is True
+
+
+def test_estado_inicial_e_vazio():
+    s = StatePublisher().read()
+    assert s.preset_name == ""
+    assert s.frame == 0
+    assert s.audio_connected is False
+
+
+def test_publicar_e_ler():
+    p = StatePublisher()
+    p.publish(EngineState(preset_name="tunel", fps=59.7, frame=120))
+    s = p.read()
+    assert s.preset_name == "tunel"
+    assert s.fps == 59.7
+    assert s.frame == 120
+
+
+def test_leitura_devolve_instantaneo_imutavel():
+    """Quem le nao pode enxergar um estado meio escrito."""
+    p = StatePublisher()
+    p.publish(EngineState(preset_name="a", frame=1))
+    antes = p.read()
+    p.publish(EngineState(preset_name="b", frame=2))
+    assert antes.preset_name == "a"
+    assert antes.frame == 1
+
+
+def test_publicacao_concorrente_nunca_mistura_campos():
+    p = StatePublisher()
+    parar = threading.Event()
+
+    def escritor(nome, n):
+        while not parar.is_set():
+            p.publish(EngineState(preset_name=nome, frame=n))
+
+    ts = [threading.Thread(target=escritor, args=(nome, n), daemon=True)
+          for nome, n in (("a", 1), ("b", 2))]
+    for t in ts:
+        t.start()
+    for _ in range(2000):
+        s = p.read()
+        # cada publicacao e atomica: nome e frame sempre vem do mesmo par
+        assert (s.preset_name, s.frame) in {("", 0), ("a", 1), ("b", 2)}
+    parar.set()
+    for t in ts:
+        t.join(timeout=2)

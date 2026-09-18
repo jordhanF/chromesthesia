@@ -66,3 +66,36 @@ class CommandQueue:
                 pending.append(self._queue.get_nowait())
             except queue.Empty:
                 return pending
+
+
+@dataclass(frozen=True)
+class EngineState:
+    """Instantaneo do que o motor esta fazendo. Imutavel de proposito."""
+    preset_path: str = ""
+    preset_name: str = ""
+    fps: float = 0.0
+    audio_peak: float = 0.0
+    audio_connected: bool = False
+    frame: int = 0
+
+
+class StatePublisher:
+    """Publica o estado do motor para leitores de outras threads.
+
+    Como EngineState e congelado, trocar a referencia sob lock basta: quem le
+    recebe um instantaneo coerente, nunca um objeto meio atualizado.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state = EngineState()
+
+    def publish(self, state: EngineState) -> None:
+        """Substitui o estado corrente."""
+        with self._lock:
+            self._state = state
+
+    def read(self) -> EngineState:
+        """Devolve o estado corrente."""
+        with self._lock:
+            return self._state
