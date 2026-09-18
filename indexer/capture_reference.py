@@ -24,23 +24,17 @@ import numpy as np
 import pyaudiowpatch as pyaudio
 
 import config
-
-
-def find_loopback(pa: pyaudio.PyAudio) -> dict:
-    """Acha o dispositivo de loopback que corresponde a saida padrao."""
-    wasapi = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
-    speakers = pa.get_device_info_by_index(wasapi["defaultOutputDevice"])
-    for device in pa.get_loopback_device_info_generator():
-        if speakers["name"] in device["name"]:
-            return device
-    raise RuntimeError(f"nenhum loopback casou com a saida padrao ({speakers['name']})")
+from engine.audio import LoopbackUnavailable, find_loopback_device
 
 
 def record(seconds: float) -> tuple[np.ndarray, int]:
     """Grava do loopback. Devolve (amostras float32 (n, canais), taxa)."""
     pa = pyaudio.PyAudio()
     try:
-        device = find_loopback(pa)
+        try:
+            device = find_loopback_device()
+        except LoopbackUnavailable as exc:
+            raise SystemExit(f"sem loopback: {exc}")
         rate = int(device["defaultSampleRate"])
         channels = int(device["maxInputChannels"])
         print(f"gravando de: {device['name']}  ({rate} Hz, {channels} ch)")

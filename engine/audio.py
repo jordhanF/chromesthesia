@@ -9,6 +9,7 @@ from __future__ import annotations
 import threading
 
 import numpy as np
+import pyaudiowpatch as pyaudio
 
 
 class AudioBuffer:
@@ -61,3 +62,95 @@ class AudioBuffer:
         """Quantas amostras ja passaram pelo buffer desde a criacao."""
         with self._lock:
             return self._written
+
+
+class LoopbackUnavailable(Exception):
+    """Nao ha dispositivo de loopback utilizavel para a saida padrao."""
+
+
+def find_loopback_device() -> dict:
+    """Acha o dispositivo de loopback que corresponde a saida padrao do Windows."""
+    audio = pyaudio.PyAudio()
+    try:
+        try:
+            wasapi = audio.get_host_api_info_by_type(pyaudio.paWASAPI)
+        except OSError as exc:
+            raise LoopbackUnavailable(f"WASAPI indisponivel: {exc}") from exc
+        speakers = audio.get_device_info_by_index(wasapi["defaultOutputDevice"])
+        for device in audio.get_loopback_device_info_generator():
+            if speakers["name"] in device["name"]:
+                return device
+        raise LoopbackUnavailable(
+            f"nenhum loopback casou com a saida padrao ({speakers['name']})")
+    finally:
+        audio.terminate()
+
+
+class LoopbackCapture:
+    """Thread que despeja o audio da saida padrao dentro de um AudioBuffer.
+
+    Se o dispositivo sumir ou falhar em runtime, a thread encerra e `connected`
+    passa a False - o motor continua desenhando, so sem reagir ao som.
+    """
+
+    CHUNK = 1024
+
+    def __init__(self, buffer: AudioBuffer) -> None:
+        self._buffer = buffer
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._running = threading.Event()
+        self.sample_rate = 0
+        self.channels = 0
+
+    @property
+    def connected(self) -> bool:
+        """Se a captura esta ativa neste momento."""
+        return self._running.is_set()
+
+    def start(self) -> None:
+        """Sobe a thread de captura. Nao bloqueia."""
+        if self._thread is not None:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="audio", daemon=True)
+        self._thread.start()
+
+    def wait_until_running(self, timeout: float = 5.0) -> bool:
+        """Espera a captura comecar de fato. Util em teste e na subida do app."""
+        return self._running.wait(timeout)
+
+    def stop(self) -> None:
+        """Pede parada e espera a thread sair."""
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=3.0)
+            self._thread = None
+        self._running.clear()
+
+    def _run(self) -> None:
+        audio = pyaudio.PyAudio()
+        stream = None
+        try:
+            device = find_loopback_device()
+            self.sample_rate = int(device["defaultSampleRate"])
+            self.channels = int(device["maxInputChannels"])
+            stream = audio.open(format=pyaudio.paFloat32, channels=self.channels,
+                                rate=self.sample_rate, input=True,
+                                input_device_index=device["index"],
+                                frames_per_buffer=self.CHUNK)
+            self._running.set()
+            while not self._stop.is_set():
+                raw = stream.read(self.CHUNK, exception_on_overflow=False)
+                samples = np.frombuffer(raw, dtype=np.float32).reshape(-1, self.channels)
+                self._buffer.write(samples)
+        except Exception:
+            pass  # dispositivo sumiu ou falhou: encerra em silencio, motor segue
+        finally:
+            self._running.clear()
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            audio.terminate()

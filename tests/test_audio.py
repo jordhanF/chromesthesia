@@ -54,3 +54,36 @@ def test_conta_o_total_escrito():
     b.write(_rampa(5))
     b.write(_rampa(5))
     assert b.total_written == 10
+
+
+import pytest
+
+from engine.audio import LoopbackCapture, LoopbackUnavailable, find_loopback_device
+
+
+def test_encontra_o_dispositivo_de_loopback_da_saida_padrao():
+    """Depende da maquina ter saida de audio ativa. Pula se nao tiver."""
+    try:
+        device = find_loopback_device()
+    except LoopbackUnavailable as exc:
+        pytest.skip(f"sem loopback nesta maquina: {exc}")
+    assert device["maxInputChannels"] >= 1
+    assert device["defaultSampleRate"] > 0
+
+
+def test_captura_preenche_o_buffer():
+    from engine.audio import AudioBuffer
+    try:
+        find_loopback_device()
+    except LoopbackUnavailable as exc:
+        pytest.skip(f"sem loopback nesta maquina: {exc}")
+
+    buf = AudioBuffer(capacity=96000)
+    cap = LoopbackCapture(buf)
+    cap.start()
+    try:
+        assert cap.wait_until_running(timeout=5.0), "captura nao iniciou em 5s"
+        assert cap.connected is True
+    finally:
+        cap.stop()
+    assert cap.connected is False
