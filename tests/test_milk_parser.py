@@ -25,7 +25,25 @@ def test_linha_sem_igual_e_ignorada():
     assert parse_milk_text("lixo sem igual\nfDecay=0.5\n") == {"fDecay": "0.5"}
 
 
-# acrescentar em tests/test_milk_parser.py
+def test_chave_repetida_primeira_vence():
+    """PresetFileParser.cpp:174-178 da libprojectM: so a primeira ocorrencia
+    de uma chave e guardada ("Only add first occurrence to mimic Milkdrop
+    behaviour"), para mimetizar o Milkdrop.
+    """
+    texto = "warp=0\nwarp=1\nwarp=2\n"
+    assert parse_milk_text(texto) == {"warp": "0"}
+
+
+def test_chave_repetida_primeira_vence_com_linha_de_equacao_orfa():
+    """Regressao de corpus: Dancer/Glowsticks/15.milk define zoom=1.00000 e,
+    na ultima linha do arquivo, uma equacao orfa sem prefixo de indice
+    ('zoom = zoom + 0.1*sin(time*3.14);'). Ambas as linhas usam a chave
+    'zoom'; a primeira deve vencer.
+    """
+    texto = "zoom=1.00000\nzoom = zoom + 0.1*sin(time*3.14);\n"
+    assert parse_milk_text(texto) == {"zoom": "1.00000"}
+
+
 from indexer.milk_parser import read_bool, read_float, read_int
 
 
@@ -51,7 +69,6 @@ def test_read_int_trunca_float():
     assert read_int({"PSVERSION": "2.000"}, "PSVERSION", 0) == 2
 
 
-# acrescentar em tests/test_milk_parser.py
 from indexer.milk_parser import count_enabled, has_shader
 
 
@@ -80,7 +97,6 @@ def test_has_shader_detecta_primeira_linha():
     assert has_shader({}, "comp") is False
 
 
-# acrescentar em tests/test_milk_parser.py
 from pathlib import Path
 
 from indexer.milk_parser import derive_taxonomy
@@ -108,28 +124,27 @@ def test_taxonomia_fora_da_raiz_vira_desconhecido():
     assert derive_taxonomy(Path("C:/outro/foo.milk"), Path("C:/x/presets")) == ("", "", False)
 
 
-# acrescentar em tests/test_milk_parser.py
 from indexer.milk_parser import PresetFeatures, parse_preset_file
 
 
 MINIMO = """MILKDROP_PRESET_VERSION=201
 PSVERSION=2
 [preset00]
-fDecay=0.980
+fDecay=0.950
 fGammaAdj=1.900
 fVideoEchoAlpha=0.250
 fVideoEchoZoom=1.169
 fWarpAnimSpeed=1.500
-fZoomExponent=1.00000
+fZoomExponent=1.05000
 zoom=1.01191
 rot=0.02000
 warp=0.26300
-sx=1.00000
-sy=1.00000
+sx=1.02000
+sy=0.98000
 bInvert=1
-bBrighten=0
-bDarken=0
-bSolarize=0
+bBrighten=1
+bDarken=1
+bSolarize=1
 bDarkenCenter=1
 wave_r=0.300
 wave_g=0.250
@@ -145,6 +160,14 @@ comp_1=`shader_body
 
 
 def test_parse_preset_file_monta_registro(tmp_path):
+    """Cobre todos os 29 campos de PresetFeatures (mais 'path').
+
+    A fixture MINIMO da a cada campo um valor distinto e diferente do
+    padrao correspondente (ver tabela de defaults em parse_preset_file),
+    para que um bug de copy-paste entre dois campos do mesmo tipo -- por
+    exemplo, trocar as chaves de wave_r e wave_b -- derrube este teste em
+    vez de passar em silencio.
+    """
     root = tmp_path / "presets"
     d = root / "pack" / "Hypnotic" / "Polar Warp"
     d.mkdir(parents=True)
@@ -154,16 +177,31 @@ def test_parse_preset_file_monta_registro(tmp_path):
     feat = parse_preset_file(f, root)
 
     assert isinstance(feat, PresetFeatures)
+    assert feat.path == str(f)
     assert feat.name == "exemplo"
     assert feat.family == "Hypnotic"
     assert feat.subfamily == "Polar Warp"
     assert feat.is_mirror is False
-    assert feat.decay == 0.980
-    assert feat.gamma == 1.900
     assert feat.warp_anim_speed == 1.500
+    assert feat.zoom == 1.01191
+    assert feat.rot == 0.02000
+    assert feat.warp == 0.26300
+    assert feat.zoom_exponent == 1.05000
+    assert feat.sx == 1.02000
+    assert feat.sy == 0.98000
+    assert feat.decay == 0.950
+    assert feat.echo_alpha == 0.250
+    assert feat.echo_zoom == 1.169
+    assert feat.gamma == 1.900
+    assert feat.brighten is True
+    assert feat.darken is True
     assert feat.invert is True
+    assert feat.solarize is True
     assert feat.darken_center is True
-    assert feat.brighten is False
+    assert feat.wave_r == 0.300
+    assert feat.wave_g == 0.250
+    assert feat.wave_b == 0.600
+    assert feat.wave_alpha == 0.001
     assert feat.n_shapes == 1
     assert feat.n_waves == 2
     assert feat.has_warp_shader is True
@@ -172,6 +210,9 @@ def test_parse_preset_file_monta_registro(tmp_path):
 
 
 def test_parse_preset_file_tolera_campos_ausentes(tmp_path):
+    """Campos ausentes devem cair nos padroes da libprojectM (PresetState.hpp),
+    nao nas antigas medianas do corpus.
+    """
     root = tmp_path / "presets"
     d = root / "pack" / "Geometric" / "Cube"
     d.mkdir(parents=True)
@@ -180,8 +221,16 @@ def test_parse_preset_file_tolera_campos_ausentes(tmp_path):
 
     feat = parse_preset_file(f, root)
 
-    assert feat.decay == 0.96
+    assert feat.warp_anim_speed == 1.0
     assert feat.zoom == 1.0
+    assert feat.decay == 0.98
+    assert feat.gamma == 2.0
+    assert feat.echo_zoom == 2.0
+    assert feat.warp == 1.0
+    assert feat.wave_r == 1.0
+    assert feat.wave_g == 1.0
+    assert feat.wave_b == 1.0
+    assert feat.wave_alpha == 0.8
     assert feat.n_shapes == 0
     assert feat.has_warp_shader is False
 

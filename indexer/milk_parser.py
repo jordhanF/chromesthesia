@@ -8,7 +8,8 @@ def parse_milk_text(text: str) -> dict[str, str]:
 
     Cabecalhos de secao ([preset00]) e linhas sem '=' sao ignorados.
     O valor nao e normalizado: linhas de shader dependem do espacamento.
-    Chave repetida: a ultima vence.
+    Chave repetida: a primeira ocorrencia vence, para mimetizar o
+    comportamento do Milkdrop/libprojectM (PresetFileParser.cpp:174-178).
     """
     raw: dict[str, str] = {}
     for line in text.splitlines():
@@ -18,11 +19,12 @@ def parse_milk_text(text: str) -> dict[str, str]:
         key, sep, value = line.partition("=")
         if not sep:
             continue
-        raw[key.strip()] = value.rstrip("\r\n")
+        key = key.strip()
+        if key not in raw:
+            raw[key] = value
     return raw
 
 
-# acrescentar em indexer/milk_parser.py
 def read_float(raw: dict[str, str], key: str, default: float = 0.0) -> float:
     """Le um campo como float, caindo no padrao se ausente ou malformado."""
     try:
@@ -41,10 +43,9 @@ def read_bool(raw: dict[str, str], key: str, default: bool = False) -> bool:
     return read_float(raw, key, 1.0 if default else 0.0) >= 0.5
 
 
-# acrescentar em indexer/milk_parser.py
 import re
 
-_ENABLED_RE = "^{prefix}_(\\d+)_enabled$"
+_ENABLED_RE = "^{prefix}_(?:\\d+)_enabled$"
 
 
 def count_enabled(raw: dict[str, str], prefix: str) -> int:
@@ -62,7 +63,6 @@ def has_shader(raw: dict[str, str], kind: str) -> bool:
     return f"{kind}_1" in raw
 
 
-# acrescentar em indexer/milk_parser.py
 from pathlib import Path
 
 
@@ -70,8 +70,9 @@ def derive_taxonomy(path: Path, preset_root: Path) -> tuple[str, str, bool]:
     """Extrai (familia, subfamilia, espelhado) do caminho do preset.
 
     O layout esperado e <preset_root>/<pack>/<Familia>/<Subfamilia>/arquivo.milk.
-    Presets direto na familia devolvem subfamilia vazia. Caminhos fora da raiz
-    devolvem ('', '', False).
+    Presets direto na familia devolvem subfamilia vazia. Caminhos fora da raiz,
+    ou caminhos rasos demais dentro dela (menos de 3 segmentos apos
+    preset_root), tambem devolvem ('', '', False).
     """
     try:
         parts = path.relative_to(preset_root).parts
@@ -85,7 +86,6 @@ def derive_taxonomy(path: Path, preset_root: Path) -> tuple[str, str, bool]:
     return (family, subfamily, is_mirror)
 
 
-# acrescentar em indexer/milk_parser.py
 import os
 from dataclasses import dataclass
 
@@ -156,8 +156,10 @@ def _read_preset_text(path: Path) -> str:
 def parse_preset_file(path: Path, preset_root: Path) -> PresetFeatures:
     """Le um .milk do disco e devolve seu vetor de features.
 
-    Os padroes sao as medianas do corpus, para que um campo ausente nao
-    desloque o preset no espaco de features.
+    Os padroes sao os mesmos que a libprojectM usa quando o campo esta
+    ausente do preset (PresetState.hpp), para que o vetor descreva o que
+    o renderizador de fato desenha na tela quando o preset nao especifica
+    o campo.
     """
     text = _read_preset_text(path)
     raw = parse_milk_text(text)
@@ -168,26 +170,26 @@ def parse_preset_file(path: Path, preset_root: Path) -> PresetFeatures:
         family=family,
         subfamily=subfamily,
         is_mirror=is_mirror,
-        warp_anim_speed=read_float(raw, "fWarpAnimSpeed", 0.63),
+        warp_anim_speed=read_float(raw, "fWarpAnimSpeed", 1.0),
         zoom=read_float(raw, "zoom", 1.0),
         rot=read_float(raw, "rot", 0.0),
-        warp=read_float(raw, "warp", 0.0),
+        warp=read_float(raw, "warp", 1.0),
         zoom_exponent=read_float(raw, "fZoomExponent", 1.0),
         sx=read_float(raw, "sx", 1.0),
         sy=read_float(raw, "sy", 1.0),
-        decay=read_float(raw, "fDecay", 0.96),
+        decay=read_float(raw, "fDecay", 0.98),
         echo_alpha=read_float(raw, "fVideoEchoAlpha", 0.0),
-        echo_zoom=read_float(raw, "fVideoEchoZoom", 1.0),
-        gamma=read_float(raw, "fGammaAdj", 1.21),
+        echo_zoom=read_float(raw, "fVideoEchoZoom", 2.0),
+        gamma=read_float(raw, "fGammaAdj", 2.0),
         brighten=read_bool(raw, "bBrighten"),
         darken=read_bool(raw, "bDarken"),
         invert=read_bool(raw, "bInvert"),
         solarize=read_bool(raw, "bSolarize"),
         darken_center=read_bool(raw, "bDarkenCenter"),
-        wave_r=read_float(raw, "wave_r", 0.0),
-        wave_g=read_float(raw, "wave_g", 0.0),
-        wave_b=read_float(raw, "wave_b", 0.0),
-        wave_alpha=read_float(raw, "fWaveAlpha", 0.0),
+        wave_r=read_float(raw, "wave_r", 1.0),
+        wave_g=read_float(raw, "wave_g", 1.0),
+        wave_b=read_float(raw, "wave_b", 1.0),
+        wave_alpha=read_float(raw, "fWaveAlpha", 0.8),
         n_shapes=count_enabled(raw, "shapecode"),
         n_waves=count_enabled(raw, "wavecode"),
         has_warp_shader=has_shader(raw, "warp"),
