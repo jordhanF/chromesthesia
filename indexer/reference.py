@@ -37,3 +37,45 @@ def signal_hash(signal: np.ndarray) -> str:
     """Identidade curta e estavel do sinal, usada para versionar o cache."""
     return hashlib.sha256(np.ascontiguousarray(signal, dtype=np.float32).tobytes()
                           ).hexdigest()[:12]
+
+
+from pathlib import Path
+
+import miniaudio
+
+SUPPORTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg"}
+
+
+class UnsupportedAudio(Exception):
+    """Formato que o miniaudio nao decodifica."""
+
+
+def load_signal_file(path: Path, peak: float = 0.9) -> np.ndarray:
+    """Decodifica um arquivo de audio para o formato de referencia.
+
+    Devolve float32 (n, 2) a 44100 Hz, normalizado para o pico informado.
+    Levanta UnsupportedAudio para formatos que o miniaudio nao le - notavelmente
+    M4A/AAC, que e comum e falha com uma mensagem inutil se deixado passar.
+    """
+    path = Path(path)
+    if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+        raise UnsupportedAudio(
+            f"{path.suffix} nao e suportado (M4A/AAC inclusive). "
+            f"Formatos aceitos: {', '.join(sorted(SUPPORTED_SUFFIXES))}. "
+            f"Alternativa: use indexer/capture_reference.py para gravar do loopback."
+        )
+    try:
+        decoded = miniaudio.decode_file(
+            str(path),
+            output_format=miniaudio.SampleFormat.FLOAT32,
+            nchannels=2,
+            sample_rate=config.SAMPLE_RATE,
+        )
+    except miniaudio.DecodeError as exc:
+        raise UnsupportedAudio(f"miniaudio nao decodificou {path.name}: {exc}") from exc
+
+    samples = np.asarray(decoded.samples, dtype=np.float32).reshape(-1, 2)
+    largest = float(np.abs(samples).max())
+    if largest > 1e-6:
+        samples = samples / largest * peak
+    return np.ascontiguousarray(samples, dtype=np.float32)
