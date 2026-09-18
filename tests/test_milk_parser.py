@@ -23,3 +23,29 @@ def test_preserva_espacos_do_valor_em_linhas_de_shader():
 
 def test_linha_sem_igual_e_ignorada():
     assert parse_milk_text("lixo sem igual\nfDecay=0.5\n") == {"fDecay": "0.5"}
+
+
+# acrescentar em tests/test_milk_parser.py
+from indexer.milk_parser import read_bool, read_float, read_int
+
+
+def test_read_float_usa_padrao_quando_ausente():
+    assert read_float({}, "fDecay", 0.96) == 0.96
+
+
+def test_read_float_usa_padrao_quando_invalido():
+    assert read_float({"fDecay": "abc"}, "fDecay", 0.96) == 0.96
+
+
+def test_read_float_aceita_espacos():
+    assert read_float({"zoom": "  1.5 "}, "zoom", 0.0) == 1.5
+
+
+def test_read_bool_trata_zero_e_um():
+    assert read_bool({"bInvert": "1"}, "bInvert") is True
+    assert read_bool({"bInvert": "0"}, "bInvert") is False
+    assert read_bool({}, "bInvert") is False
+
+
+def test_read_int_trunca_float():
+    assert read_int({"PSVERSION": "2.000"}, "PSVERSION", 0) == 2
