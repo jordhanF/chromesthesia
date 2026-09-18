@@ -118,6 +118,38 @@ comparabilidade; apenas começa um cache novo.
 buffer de feedback do preset se desenvolver. Frames 0–49 usam a convergência rápida
 embutida da lib; 150 dá margem confortável sem desperdiçar tempo.
 
+### Limite do warmup fixo, e o modo corretivo
+
+Medido na Fase 1a: cerca de 5% do corpus renderiza poster quase preto com warmup=150.
+São presets cujo buffer de feedback acumula brilho devagar a partir de uma tela preta —
+eles desenvolvem imagem, só que depois de milhares de frames.
+
+**`decay` não serve como preditor.** `decay=1.0000` aparece tanto no pior poster medido
+(contraste 4,56) quanto num dos melhores (92,86). Subir o warmup para todo preset de
+decay alto custaria tempo extra em 28,8% do corpus para consertar ~5%.
+
+**`contrast` serve como detector**, e é medido e gravado de qualquer forma. Daí o modo
+corretivo: renderizar o corpus com warmup normal e depois
+`render_posters --redo-below-contrast <limiar> --warmup <maior>` para refazer só o que
+saiu escuro. Validado: o pior caso foi de contraste 4,56 para 127,40 e deixou de ser
+preto; os outros 47 posters da amostra ficaram byte-idênticos.
+
+### Não-determinismo residual, com causa conhecida
+
+Renders repetidos do mesmo preset com o mesmo warmup produzem contrastes diferentes
+(medido: 31 a 127 em 5 tentativas, num acumulador lento com warmup=1200). A causa está
+identificada: o AGC da libprojectM avança por **relógio real**, não por contagem de frames
+(`TimeKeeper.cpp:19`, `std::chrono::high_resolution_clock`). Como o render headless roda
+sem trava de taxa (~119 fps, variando com a carga da máquina), o tempo decorrido no frame
+N difere entre execuções, e com ele o estado visual.
+
+Para a maioria dos presets isso é irrelevante — eles atingem regime permanente antes da
+captura. Importa só nos acumuladores lentos.
+
+**Mitigação, se reprodutibilidade bit-a-bit virar requisito:** travar a taxa de render
+durante o warmup a um FPS fixo, para que o tempo de relógio por frame seja constante.
+Custa cerca de 2× no tempo de geração. Não implementado: hoje o ganho não justifica.
+
 ## Estratégia de previews (resolve os 8 GB / 8,3 h)
 
 Duas camadas:
