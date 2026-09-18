@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+app/
+*.zip
+data/previews/
+data/*.sqlite
+ui/node_modules/
+ui/dist/
