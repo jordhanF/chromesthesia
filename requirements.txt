@@ -1,0 +1,10 @@
+glfw
+PyOpenGL
+numpy
+Pillow
+miniaudio
+PyAudioWPatch
+fastapi
+uvicorn
+websockets
+pytest
