@@ -9,10 +9,19 @@ os primeiros 50 frames usam convergencia rapida embutida na lib - e o buffer
 de feedback do proprio preset precisa se desenvolver. Sem warmup, o mesmo
 preset rende posters diferentes a cada execucao.
 
+Alguns presets acumulam brilho tao devagar que nem 150 frames bastam: o
+poster sai quase preto. decay nao prediz isso (decay=1.0000 aparece tanto no
+poster mais fraco quanto num dos mais fortes da amostra) - mas o contrast ja
+gravado por render_one() separa bem os dois casos. Por isso o modo corretivo
+nao re-renderiza tudo com warmup longo (caro); ele renderiza tudo uma vez com
+warmup normal e depois usa --redo-below-contrast para refazer so o que saiu
+escuro, com --warmup maior.
+
 Uso:
     python -m indexer.render_posters
     python -m indexer.render_posters --family Hypnotic
     python -m indexer.render_posters --reference data/reference/captura.wav
+    python -m indexer.render_posters --redo-below-contrast 20 --warmup 1200
 """
 from __future__ import annotations
 
@@ -44,16 +53,19 @@ def _chunk(signal: np.ndarray, index: int) -> np.ndarray:
     return signal[start:start + size]
 
 
-def render_one(pm: ProjectM, ctx: GLContext, preset: Path,
-               signal: np.ndarray) -> tuple[Image.Image, float, float]:
+def render_one(pm: ProjectM, ctx: GLContext, preset: Path, signal: np.ndarray,
+               warmup_frames: int = WARMUP_FRAMES) -> tuple[Image.Image, float, float]:
     """Renderiza um preset e devolve (poster, contraste, movimento).
 
     contraste e o desvio-padrao do poster; movimento e a diferenca media entre
     frames consecutivos. Os dois separam preset vivo de preset morto.
+
+    warmup_frames sobrepoe WARMUP_FRAMES - presets cujo buffer de feedback
+    acumula brilho devagar precisam de mais quadros para sair do preto.
     """
     pm.load_preset_file(preset, smooth=False)
     frame_index = 0
-    for _ in range(WARMUP_FRAMES):
+    for _ in range(warmup_frames):
         pm.add_pcm(_chunk(signal, frame_index))
         pm.render_frame()
         ctx.swap()
@@ -82,7 +94,19 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="0 = sem limite")
     ap.add_argument("--reference", type=Path, default=None,
                     help="arquivo de audio de referencia; padrao e o sinal sintetico")
+    ap.add_argument("--warmup", type=int, default=WARMUP_FRAMES,
+                    help="frames de aquecimento antes de capturar; sobrepoe WARMUP_FRAMES (padrao 150)")
+    ap.add_argument("--redo-below-contrast", type=float, default=None,
+                    help="troca o modo de selecao: em vez de renderizar presets sem poster, "
+                         "re-renderiza os que ja tem poster do sinal atual com contrast abaixo "
+                         "deste valor, sobrescrevendo o webp e o contrast/motion no banco")
     args = ap.parse_args()
+
+    redo_mode = args.redo_below_contrast is not None
+    if redo_mode and args.warmup <= WARMUP_FRAMES:
+        print(f"aviso: --redo-below-contrast sem --warmup maior que o padrao "
+              f"({WARMUP_FRAMES}) tende a regravar os mesmos posters escuros - "
+              f"o ponto do modo redo e usar um warmup maior", file=sys.stderr)
 
     signal = load_signal_file(args.reference) if args.reference else synthetic_signal()
     sig = signal_hash(signal)
@@ -93,11 +117,17 @@ def main() -> int:
     con = connect(args.db)
     init_schema(con)
     rows = list(iter_presets(con, family=args.family))
+    if redo_mode:
+        rows = [r for r in rows if r["poster_sig"] == sig and r["contrast"] is not None
+                and r["contrast"] < args.redo_below_contrast]
+        print(f"modo redo: contrast < {args.redo_below_contrast} no sinal atual -> "
+              f"{len(rows)} presets selecionados")
     if args.limit:
         rows = rows[:args.limit]
     if not rows:
-        print("nenhum preset no indice; rode python -m indexer.build_index",
-              file=sys.stderr)
+        msg = ("nenhum preset abaixo do contrast informado para o sinal atual" if redo_mode
+               else "nenhum preset no indice; rode python -m indexer.build_index")
+        print(msg, file=sys.stderr)
         return 1
 
     done = skipped = failed = 0
@@ -105,13 +135,13 @@ def main() -> int:
     with GLContext(RENDER_W, RENDER_H, visible=False, vsync=False) as ctx:
         for i, row in enumerate(rows, 1):
             dst = out_dir / f"{Path(row['path']).stem}.webp"
-            if dst.exists() and row["poster_sig"] == sig:
+            if not redo_mode and dst.exists() and row["poster_sig"] == sig:
                 skipped += 1
                 continue
             try:
                 with ProjectM(RENDER_W, RENDER_H) as pm:
                     poster, contrast, motion = render_one(
-                        pm, ctx, Path(row["path"]), signal)
+                        pm, ctx, Path(row["path"]), signal, warmup_frames=args.warmup)
                 poster.save(dst, format="WEBP", quality=80, method=4)
                 con.execute(
                     "UPDATE presets SET contrast=?, motion=?, poster_sig=? WHERE path=?",
@@ -129,7 +159,8 @@ def main() -> int:
                       f"~{restantes:.0f} min restantes", flush=True)
     con.commit()
     con.close()
-    print(f"posters: {done} novos, {skipped} pulados, {failed} falhas -> {out_dir}")
+    label = "re-renderizados" if redo_mode else "novos"
+    print(f"posters: {done} {label}, {skipped} pulados, {failed} falhas -> {out_dir}")
     return 1 if failed else 0
 
 
