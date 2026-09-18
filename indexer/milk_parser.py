@@ -83,3 +83,114 @@ def derive_taxonomy(path: Path, preset_root: Path) -> tuple[str, str, bool]:
     subfamily = parts[2] if len(parts) >= 4 else ""
     is_mirror = subfamily.endswith(" Mirror")
     return (family, subfamily, is_mirror)
+
+
+# acrescentar em indexer/milk_parser.py
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PresetFeatures:
+    """Vetor de features de um preset, extraido apenas do texto do arquivo."""
+    path: str
+    name: str
+    family: str
+    subfamily: str
+    is_mirror: bool
+    # movimento
+    warp_anim_speed: float
+    zoom: float
+    rot: float
+    warp: float
+    zoom_exponent: float
+    sx: float
+    sy: float
+    # persistencia
+    decay: float
+    echo_alpha: float
+    echo_zoom: float
+    # luz
+    gamma: float
+    brighten: bool
+    darken: bool
+    invert: bool
+    solarize: bool
+    darken_center: bool
+    # cor
+    wave_r: float
+    wave_g: float
+    wave_b: float
+    wave_alpha: float
+    # densidade
+    n_shapes: int
+    n_waves: int
+    has_warp_shader: bool
+    has_comp_shader: bool
+    psversion: int
+
+
+def _read_preset_text(path: Path) -> str:
+    """Le o texto de um preset, tolerando caminhos que passam de MAX_PATH.
+
+    Corrigido durante a Tarefa 5: 1 dos 9.795 presets do corpus real tem um
+    nome de arquivo longo o bastante para que o caminho completo ultrapasse
+    os 260 caracteres do limite classico do Windows. rglob() ainda encontra
+    esse arquivo (a enumeracao de diretorio aceita caminhos longos), mas
+    abri-lo pelo caminho normal falha com FileNotFoundError. O prefixo de
+    caminho estendido (\\\\?\\) contorna isso sem exigir mudanca de registro
+    do Windows (LongPathsEnabled).
+    """
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        if os.name != "nt":
+            raise
+        resolved = str(path.resolve())
+        if not resolved.startswith("\\\\?\\"):
+            resolved = "\\\\?\\" + resolved
+        with open(resolved, "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+
+
+def parse_preset_file(path: Path, preset_root: Path) -> PresetFeatures:
+    """Le um .milk do disco e devolve seu vetor de features.
+
+    Os padroes sao as medianas do corpus, para que um campo ausente nao
+    desloque o preset no espaco de features.
+    """
+    text = _read_preset_text(path)
+    raw = parse_milk_text(text)
+    family, subfamily, is_mirror = derive_taxonomy(path, preset_root)
+    return PresetFeatures(
+        path=str(path),
+        name=path.stem,
+        family=family,
+        subfamily=subfamily,
+        is_mirror=is_mirror,
+        warp_anim_speed=read_float(raw, "fWarpAnimSpeed", 0.63),
+        zoom=read_float(raw, "zoom", 1.0),
+        rot=read_float(raw, "rot", 0.0),
+        warp=read_float(raw, "warp", 0.0),
+        zoom_exponent=read_float(raw, "fZoomExponent", 1.0),
+        sx=read_float(raw, "sx", 1.0),
+        sy=read_float(raw, "sy", 1.0),
+        decay=read_float(raw, "fDecay", 0.96),
+        echo_alpha=read_float(raw, "fVideoEchoAlpha", 0.0),
+        echo_zoom=read_float(raw, "fVideoEchoZoom", 1.0),
+        gamma=read_float(raw, "fGammaAdj", 1.21),
+        brighten=read_bool(raw, "bBrighten"),
+        darken=read_bool(raw, "bDarken"),
+        invert=read_bool(raw, "bInvert"),
+        solarize=read_bool(raw, "bSolarize"),
+        darken_center=read_bool(raw, "bDarkenCenter"),
+        wave_r=read_float(raw, "wave_r", 0.0),
+        wave_g=read_float(raw, "wave_g", 0.0),
+        wave_b=read_float(raw, "wave_b", 0.0),
+        wave_alpha=read_float(raw, "fWaveAlpha", 0.0),
+        n_shapes=count_enabled(raw, "shapecode"),
+        n_waves=count_enabled(raw, "wavecode"),
+        has_warp_shader=has_shader(raw, "warp"),
+        has_comp_shader=has_shader(raw, "comp"),
+        psversion=read_int(raw, "PSVERSION", 0),
+    )

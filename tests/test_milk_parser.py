@@ -106,3 +106,118 @@ def test_taxonomia_marca_espelhado():
 
 def test_taxonomia_fora_da_raiz_vira_desconhecido():
     assert derive_taxonomy(Path("C:/outro/foo.milk"), Path("C:/x/presets")) == ("", "", False)
+
+
+# acrescentar em tests/test_milk_parser.py
+from indexer.milk_parser import PresetFeatures, parse_preset_file
+
+
+MINIMO = """MILKDROP_PRESET_VERSION=201
+PSVERSION=2
+[preset00]
+fDecay=0.980
+fGammaAdj=1.900
+fVideoEchoAlpha=0.250
+fVideoEchoZoom=1.169
+fWarpAnimSpeed=1.500
+fZoomExponent=1.00000
+zoom=1.01191
+rot=0.02000
+warp=0.26300
+sx=1.00000
+sy=1.00000
+bInvert=1
+bBrighten=0
+bDarken=0
+bSolarize=0
+bDarkenCenter=1
+wave_r=0.300
+wave_g=0.250
+wave_b=0.600
+fWaveAlpha=0.001
+shapecode_0_enabled=1
+shapecode_1_enabled=0
+wavecode_0_enabled=1
+wavecode_1_enabled=1
+warp_1=`shader_body
+comp_1=`shader_body
+"""
+
+
+def test_parse_preset_file_monta_registro(tmp_path):
+    root = tmp_path / "presets"
+    d = root / "pack" / "Hypnotic" / "Polar Warp"
+    d.mkdir(parents=True)
+    f = d / "exemplo.milk"
+    f.write_text(MINIMO, encoding="utf-8")
+
+    feat = parse_preset_file(f, root)
+
+    assert isinstance(feat, PresetFeatures)
+    assert feat.name == "exemplo"
+    assert feat.family == "Hypnotic"
+    assert feat.subfamily == "Polar Warp"
+    assert feat.is_mirror is False
+    assert feat.decay == 0.980
+    assert feat.gamma == 1.900
+    assert feat.warp_anim_speed == 1.500
+    assert feat.invert is True
+    assert feat.darken_center is True
+    assert feat.brighten is False
+    assert feat.n_shapes == 1
+    assert feat.n_waves == 2
+    assert feat.has_warp_shader is True
+    assert feat.has_comp_shader is True
+    assert feat.psversion == 2
+
+
+def test_parse_preset_file_tolera_campos_ausentes(tmp_path):
+    root = tmp_path / "presets"
+    d = root / "pack" / "Geometric" / "Cube"
+    d.mkdir(parents=True)
+    f = d / "pelado.milk"
+    f.write_text("MILKDROP_PRESET_VERSION=201\n[preset00]\n", encoding="utf-8")
+
+    feat = parse_preset_file(f, root)
+
+    assert feat.decay == 0.96
+    assert feat.zoom == 1.0
+    assert feat.n_shapes == 0
+    assert feat.has_warp_shader is False
+
+
+def test_parse_preset_file_aceita_bytes_invalidos(tmp_path):
+    """Varios presets do corpus tem bytes que nao sao UTF-8 validos."""
+    root = tmp_path / "presets"
+    d = root / "pack" / "Drawing" / "Liquid"
+    d.mkdir(parents=True)
+    f = d / "sujo.milk"
+    f.write_bytes(b"[preset00]\nfDecay=0.5\n// coment\xe1rio latin1\n")
+
+    feat = parse_preset_file(f, root)
+
+    assert feat.decay == 0.5
+
+
+def test_parse_preset_file_tolera_caminho_acima_de_max_path(tmp_path):
+    """Regressao: achada ao validar contra o corpus real (Tarefa 5).
+
+    Um preset do pacote cream-of-the-crop tem nome longo o bastante para que
+    o caminho completo ultrapasse os 260 caracteres do limite MAX_PATH do
+    Windows. path.read_text() falha com FileNotFoundError nesse caso mesmo
+    o arquivo existindo; parse_preset_file precisa contornar isso.
+    """
+    root = tmp_path / "presets"
+    d = root / "pack" / "Drawing" / "Explosions Mirror"
+    d.mkdir(parents=True)
+    nome_longo = ("x" * 220) + ".milk"
+    f = d / nome_longo
+    assert len(str(f)) > 260
+
+    caminho_estendido = "\\\\?\\" + str(f.resolve())
+    with open(caminho_estendido, "w", encoding="utf-8") as fh:
+        fh.write("fDecay=0.5\n")
+
+    feat = parse_preset_file(f, root)
+
+    assert feat.decay == 0.5
