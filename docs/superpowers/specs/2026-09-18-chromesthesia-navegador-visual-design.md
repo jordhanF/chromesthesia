@@ -1,4 +1,4 @@
-# Sala — Fases 0 e 1: motor Python + navegador visual de presets
+# Chromesthesia — Fases 0 e 1: motor Python + navegador visual de presets
 
 **Data:** 2026-09-18
 **Status:** aprovado pelo usuário (ver "Decisões" abaixo)

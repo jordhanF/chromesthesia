@@ -1,4 +1,4 @@
-# Sala — Fase 1a: núcleo + indexador de presets
+# Chromesthesia — Fase 1a: núcleo + indexador de presets
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -61,7 +61,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 APP_DIR = Path(os.environ.get(
-    "SALA_APP_DIR", PROJECT_ROOT / "app" / "projectMSDL-2.0.0-win64"))
+    "CHROMESTHESIA_APP_DIR", PROJECT_ROOT / "app" / "projectMSDL-2.0.0-win64"))
 DLL_PATH = APP_DIR / "projectM-4.dll"
 GLEW_PATH = APP_DIR / "glew32.dll"
 PRESET_ROOT = APP_DIR / "presets"
@@ -1479,7 +1479,7 @@ class GLContext:
     """Janela glfw + contexto OpenGL 3.3 core + GLEW inicializado."""
 
     def __init__(self, width: int, height: int, visible: bool = True,
-                 title: str = "Sala", vsync: bool = True) -> None:
+                 title: str = "Chromesthesia", vsync: bool = True) -> None:
         self.width = width
         self.height = height
         if not glfw.init():

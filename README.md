@@ -1,4 +1,7 @@
-# Sala
+# Chromesthesia
+
+> *Cromestesia* é a forma de sinestesia em que som dispara percepção de cor — algumas
+> pessoas veem música. Este projeto tenta construir isso para o resto de nós.
 
 Visualizador de música para quarto de som, construído sobre a
 [libprojectM](https://github.com/projectM-visualizer/projectm) 4.1.4 — a reimplementação
@@ -67,7 +70,7 @@ alguém:
 - `pip install -r requirements.txt`
 - Uma build da libprojectM. A mais simples é baixar o
   [projectMSDL](https://github.com/projectM-visualizer/frontend-sdl-cpp/releases), que já
-  traz `projectM-4.dll`, `glew32.dll`, presets e texturas. Aponte `SALA_APP_DIR` para a
+  traz `projectM-4.dll`, `glew32.dll`, presets e texturas. Aponte `CHROMESTHESIA_APP_DIR` para a
   pasta extraída.
 
 ## Licença
