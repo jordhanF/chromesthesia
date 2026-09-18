@@ -7,3 +7,4 @@ data/previews/
 data/*.sqlite
 ui/node_modules/
 ui/dist/
+data/ab/

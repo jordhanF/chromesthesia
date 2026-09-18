@@ -86,14 +86,25 @@ comparar nada.
 - **`synthetic`** (padrão): 10 s determinísticos — kick a 120 BPM na banda grave, pad
   sustentado na média, hi-hat na aguda, com build-up no final. Reproduzível bit-a-bit,
   sem copyright, e projetado para exercitar as três bandas num padrão conhecido.
-- **`file`**: trecho de um arquivo de áudio apontado na config (decodificado para
-  float32 estéreo a 44,1 kHz). Previews mais representativos do que o usuário
-  realmente escuta.
+- **`file`**: trecho de um arquivo de áudio apontado na config. Decodificado com
+  `miniaudio` (wheel autocontido) — verificado: converte 48 kHz mono → 44,1 kHz estéreo
+  float32 intercalado, que é exatamente o layout de `projectm_pcm_add_float`.
+  **Limitação confirmada: miniaudio não decodifica M4A/AAC** — só FLAC, MP3, VORBIS e WAV.
+  Deliberadamente **não** usar `pydub`, que depende de ffmpeg.
+- **`capture`** (recomendado para música real): grava N segundos do loopback WASAPI e
+  salva como WAV de referência. Dispensa decoder, funciona com qualquer fonte —
+  inclusive streaming — e reaproveita o caminho de áudio que o motor já precisa.
 
-  **Dependência de decodificação:** o Python padrão só lê WAV. Para aceitar MP3/FLAC/OGG
-  usar `miniaudio` (`pip install miniaudio`) — wheel autocontido, sem binário externo.
-  Deliberadamente **não** usar `pydub`, que depende de ffmpeg — e o ffmpeg falhou ao
-  instalar nesta máquina.
+### Achado do A/B sintético × música real
+
+Medido sobre três presets (Hypnotic, Supernova, Geometric), mesmo warmup e captura:
+contraste e movimento ficaram **estatisticamente indistinguíveis** (variação < 10%, sem
+direção consistente). A causa é o AGC: como `bass/mid/treb` são normalizados pela média
+longa, ambos os sinais produzem excitação relativa equivalente.
+
+Consequência: **a escolha do sinal é estética, não técnica.** As métricas medem quanta
+atividade há na tela, não se ela cai na batida — isso só avaliação visual resolve. O
+padrão continua `synthetic` pelo determinismo; trocar não degrada nada objetivamente.
 
 **Regra invariante:** o cache de previews é versionado pelo hash do sinal de referência —
 `data/previews/<sig_hash>/<preset_id>.webp`. Trocar de sinal não corrompe a
@@ -173,8 +184,14 @@ dials ao vivo. Tudo isso é Fase 2.
 | ctypes + contexto GL | **RESOLVIDO** | `glewInit()` + `glewExperimental=1` antes de `projectm_create()` |
 | Captura de frame | **RESOLVIDO** | `glReadPixels`; a API de debug da lib é no-op |
 | Python da Microsoft Store restringe DLL | **RESOLVIDO** | `os.add_dll_directory(APP)` antes do `CDLL` |
-| Tamanho/tempo dos previews | Mitigado | Duas camadas: poster para todos, animado sob demanda |
+| Captura de áudio do sistema | **RESOLVIDO** | PyAudioWPatch, loopback WASAPI casado pelo nome da saída padrão. Verificado: `EDIFIER W820NB [Loopback]`, 48 kHz, 2 ch, float32. **Nota: o dispositivo roda a 48 kHz, não 44,1** — alimentar como vem; projectM não assume taxa. |
+| Tamanho/tempo dos previews | Mitigado | Duas camadas: poster para todos, animado sob demanda. Medido: animado a 256×144 q50 com 24 frames = ~250 KB |
 | Iris Xe engasga em preset pesado | Aberto | `projectm_set_mesh_size()` como válvula |
+
+**Fase 0 concluída em 2026-09-18.** Todo o tubo foi provado ponta a ponta com scripts
+descartáveis em `tests/`: ctypes → DLL → glewInit → contexto GL → `projectm_create` →
+render a 119 fps → `glReadPixels` → WebP animado via Pillow, mais captura WASAPI e
+decodificação com miniaudio.
 
 ## Decisões
 
