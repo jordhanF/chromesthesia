@@ -60,3 +60,26 @@ def count_enabled(raw: dict[str, str], prefix: str) -> int:
 def has_shader(raw: dict[str, str], kind: str) -> bool:
     """Diz se o preset traz um shader HLSL proprio. kind e 'warp' ou 'comp'."""
     return f"{kind}_1" in raw
+
+
+# acrescentar em indexer/milk_parser.py
+from pathlib import Path
+
+
+def derive_taxonomy(path: Path, preset_root: Path) -> tuple[str, str, bool]:
+    """Extrai (familia, subfamilia, espelhado) do caminho do preset.
+
+    O layout esperado e <preset_root>/<pack>/<Familia>/<Subfamilia>/arquivo.milk.
+    Presets direto na familia devolvem subfamilia vazia. Caminhos fora da raiz
+    devolvem ('', '', False).
+    """
+    try:
+        parts = path.relative_to(preset_root).parts
+    except ValueError:
+        return ("", "", False)
+    if len(parts) < 3:
+        return ("", "", False)
+    family = parts[1]
+    subfamily = parts[2] if len(parts) >= 4 else ""
+    is_mirror = subfamily.endswith(" Mirror")
+    return (family, subfamily, is_mirror)

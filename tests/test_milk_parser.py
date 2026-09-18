@@ -78,3 +78,31 @@ def test_has_shader_detecta_primeira_linha():
     assert has_shader({"warp_1": "`shader_body"}, "warp") is True
     assert has_shader({"comp_1": "`shader_body"}, "warp") is False
     assert has_shader({}, "comp") is False
+
+
+# acrescentar em tests/test_milk_parser.py
+from pathlib import Path
+
+from indexer.milk_parser import derive_taxonomy
+
+
+def test_taxonomia_com_subfamilia():
+    root = Path("C:/x/presets")
+    p = root / "presets-cream-of-the-crop" / "Hypnotic" / "Polar Warp" / "foo.milk"
+    assert derive_taxonomy(p, root) == ("Hypnotic", "Polar Warp", False)
+
+
+def test_taxonomia_sem_subfamilia():
+    root = Path("C:/x/presets")
+    p = root / "presets-cream-of-the-crop" / "! Transition" / "bar.milk"
+    assert derive_taxonomy(p, root) == ("! Transition", "", False)
+
+
+def test_taxonomia_marca_espelhado():
+    root = Path("C:/x/presets")
+    p = root / "presets-cream-of-the-crop" / "Dancer" / "Whirl Mirror" / "baz.milk"
+    assert derive_taxonomy(p, root) == ("Dancer", "Whirl Mirror", True)
+
+
+def test_taxonomia_fora_da_raiz_vira_desconhecido():
+    assert derive_taxonomy(Path("C:/outro/foo.milk"), Path("C:/x/presets")) == ("", "", False)
