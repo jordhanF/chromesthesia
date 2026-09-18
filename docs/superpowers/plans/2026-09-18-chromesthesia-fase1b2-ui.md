@@ -6,7 +6,13 @@
 
 **Architecture:** React + TypeScript servido pelo próprio FastAPI da Fase 1b-1, consumindo `/api/*` e o WebSocket `/ws` sem alteração no backend. Estado do servidor não é duplicado no cliente: o preset em exibição vem do WebSocket, não de otimismo local. Favoritos vivem em `localStorage` — são preferência de aparelho, não dado compartilhado.
 
-**Tech Stack:** Vite, React 18, TypeScript, Vitest, CSS puro com variáveis (sem framework de UI).
+**Tech Stack:** Vite 8, **React 19.3**, TypeScript 6, Vitest 5, CSS puro com variáveis (sem framework de UI).
+
+> **React 19, não 18.** O `npm create vite@latest` da Task 0 instalou 19.3.0. Uma armadilha
+> conhecida do 19: `event.currentTarget` é anulado depois que o handler retorna e dentro de
+> callbacks de atualização de estado. **Leia `currentTarget` em variável local antes de chamar
+> qualquer setter.** Os handlers de `PosterTile` não chamam setter, então estão seguros como
+> escritos — mas qualquer handler novo precisa respeitar isso.
 
 **Spec:** `docs/superpowers/specs/2026-09-18-chromesthesia-navegador-visual-design.md`
 
