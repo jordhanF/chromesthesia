@@ -49,3 +49,32 @@ def test_read_bool_trata_zero_e_um():
 
 def test_read_int_trunca_float():
     assert read_int({"PSVERSION": "2.000"}, "PSVERSION", 0) == 2
+
+
+# acrescentar em tests/test_milk_parser.py
+from indexer.milk_parser import count_enabled, has_shader
+
+
+def test_count_enabled_conta_so_os_ligados():
+    raw = {
+        "shapecode_0_enabled": "1",
+        "shapecode_1_enabled": "0",
+        "shapecode_2_enabled": "1",
+        "shapecode_2_sides": "4",
+    }
+    assert count_enabled(raw, "shapecode") == 2
+
+
+def test_count_enabled_zero_quando_nenhum():
+    assert count_enabled({"fDecay": "0.5"}, "shapecode") == 0
+
+
+def test_count_enabled_nao_confunde_prefixos():
+    raw = {"wavecode_0_enabled": "1", "shapecode_0_enabled": "1"}
+    assert count_enabled(raw, "wavecode") == 1
+
+
+def test_has_shader_detecta_primeira_linha():
+    assert has_shader({"warp_1": "`shader_body"}, "warp") is True
+    assert has_shader({"comp_1": "`shader_body"}, "warp") is False
+    assert has_shader({}, "comp") is False

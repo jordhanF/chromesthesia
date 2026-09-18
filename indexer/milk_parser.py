@@ -39,3 +39,24 @@ def read_int(raw: dict[str, str], key: str, default: int = 0) -> int:
 def read_bool(raw: dict[str, str], key: str, default: bool = False) -> bool:
     """Le um campo booleano do Milkdrop (0/1) como bool."""
     return read_float(raw, key, 1.0 if default else 0.0) >= 0.5
+
+
+# acrescentar em indexer/milk_parser.py
+import re
+
+_ENABLED_RE = "^{prefix}_(\\d+)_enabled$"
+
+
+def count_enabled(raw: dict[str, str], prefix: str) -> int:
+    """Conta quantos blocos indexados do prefixo estao com enabled=1.
+
+    prefix e 'shapecode' ou 'wavecode'.
+    """
+    pattern = re.compile(_ENABLED_RE.format(prefix=re.escape(prefix)))
+    return sum(1 for key, value in raw.items()
+               if pattern.match(key) and read_float({"v": value}, "v", 0.0) >= 0.5)
+
+
+def has_shader(raw: dict[str, str], kind: str) -> bool:
+    """Diz se o preset traz um shader HLSL proprio. kind e 'warp' ou 'comp'."""
+    return f"{kind}_1" in raw
